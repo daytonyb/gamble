@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Dice Survival</title>
+    <style>
+        :root {
+            --bg-color: #1e1e24;
+            --text-color: #f5f5f5;
+            --die-bg: #2a2a35;
+            --die-border: #444;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h1 { margin-bottom: 5px; }
+        .subtitle { color: #aaa; margin-bottom: 20px; font-size: 0.9em; text-align: center; }
+
+        #setup, #controls, #status-board {
+            background: #2a2a35;
+            padding: 15px 25px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-align: center;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .setup-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        input[type="number"] {
+            width: 60px;
+            padding: 5px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #555;
+            background: #111;
+            color: white;
+            text-align: center;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin: 0 5px;
+            width: 100%;
+            max-width: 200px;
+        }
+
+        button:hover { background-color: #45a049; }
+        button:disabled { background-color: #555; cursor: not-allowed; }
+        #autoRollBtn { background-color: #2196F3; }
+        #autoRollBtn:hover { background-color: #1976d2; }
+        #playAgainBtn { background-color: #f44336; margin-top: 15px; display: none; margin-left: auto; margin-right: auto; }
+        #playAgainBtn:hover { background-color: #d32f2f; }
+        
+        #grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 20px;
+            max-width: 800px; 
+        }
+
+        .die {
+            width: 45px;
+            height: 45px;
+            background-color: var(--die-bg);
+            border: 2px solid var(--die-border);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.1s, opacity 0.5s, background-color 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .die.rolling { transform: scale(1.1) rotate(5deg); }
+        .die:hover:not(.eliminated):not(.claimed) { border-color: #888; }
+        
+        .die.eliminated {
+            opacity: 0.15;
+            background-color: #111 !important;
+            border-color: #000 !important;
+            color: #555;
+            cursor: default;
+        }
+
+        /* Standard Elimination */
+        .die.crit {
+            background-color: #ff3333 !important;
+            color: white;
+            border-color: #aa0000 !important;
+            transform: scale(0.9);
+        }
+
+        /* New Visuals for Mechanics */
+        .die.revived {
+            background-color: #4CAF50 !important;
+            color: white;
+            border-color: #2E7D32 !important;
+            transform: scale(1.1);
+        }
+
+        .die.assassinated {
+            background-color: #9C27B0 !important;
+            color: white;
+            border-color: #4A148C !important;
+            transform: scale(0.8) rotate(-15deg);
+        }
+
+        #status-text { font-size: 1.2em; font-weight: bold; }
+        
+        .leaderboard {
+            margin-top: 15px;
+            font-size: 0.9em;
+            background: #1e1e24;
+            padding: 10px;
+            border-radius: 6px;
+            display: inline-block;
+            text-align: left;
+            border: 1px solid #444;
+        }
+        .leaderboard div { margin: 5px 0; }
+
+        #remaining-text { font-size: 0.9em; color: #aaa; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>Dice Survival</h1>
+    <div class="subtitle">Roll the max number and you're out. Roll a 1 to revive or assassinate!</div>
+
+    <div id="setup">
+        <div class="setup-row">
+            <label for="playerCount">Number of Players (1-10): </label>
+            <input type="number" id="playerCount" min="1" max="10" value="2">
+        </div>
+        <div class="setup-row">
+            <label for="dicePerPlayer">Dice picked per Player: </label>
+            <input type="number" id="dicePerPlayer" min="1" max="50" value="3">
+        </div>
+        <div class="setup-row">
+            <label for="diceCount">Total Amount of Dice: </label>
+            <input type="number" id="diceCount" min="2" max="1000" value="100">
+        </div>
+        <div class="setup-row">
+            <label for="dieFaces">Die Faces (e.g., 6 for D6): </label>
+            <input type="number" id="dieFaces" min="2" max="100" value="20">
+        </div>
+        <button id="startSetupBtn">Start Game</button>
+    </div>
+
+    <div id="status-board" style="display: none;">
+        <div id="status-text">Player 1's Turn to Pick!</div>
+        <div id="remaining-text"></div>
+        <button id="playAgainBtn">Play Again</button>
+    </div>
+
+    <div id="controls" style="display: none;">
+        <div style="display: flex; justify-content: center; gap: 10px;">
+            <button id="rollBtn">Roll All Dice</button>
+            <button id="autoRollBtn">Start Auto-Roll</button>
+        </div>
+    </div>
+
+    <div id="grid"></div>
+
+    <script>
+        // Game State Variables
+        let totalDice = 100;
+        let dieFaces = 20;
+        let dicePerPlayer = 1;
+        let diceList = [];
+        let numPlayers = 0;
+        
+        let currentPlayerPicking = 1;
+        let currentPlayerPicksMade = 0;
+        let currentPlace = 0; 
+        
+        let players = [];
+        let gameState = 'setup'; 
+        let autoRollInterval = null;
+
+        const playerColors = [
+            '#FF5733', '#33FF57', '#3357FF', '#F3FF33', '#FF33F6', 
+            '#33FFF6', '#FFA833', '#A833FF', '#FF338A', '#8AFF33'
+        ];
+
+        // DOM Elements
+        const gridEl = document.getElementById('grid');
+        const setupEl = document.getElementById('setup');
+        const statusBoardEl = document.getElementById('status-board');
+        const statusTextEl = document.getElementById('status-text');
+        const remainingTextEl = document.getElementById('remaining-text');
+        const controlsEl = document.getElementById('controls');
+        const rollBtn = document.getElementById('rollBtn');
+        const autoRollBtn = document.getElementById('autoRollBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+
+        function getOrdinal(n) {
+            const j = n % 10, k = n % 100;
+            if (j == 1 && k != 11) return n + "st";
+            if (j == 2 && k != 12) return n + "nd";
+            if (j == 3 && k != 13) return n + "rd";
+            return n + "th";
+        }
+
+        function createBoard() {
+            gridEl.innerHTML = '';
+            diceList = [];
+            for (let i = 0; i < totalDice; i++) {
+                const die = document.createElement('div');
+                die.classList.add('die');
+                die.innerText = dieFaces; 
+                die.dataset.index = i;
+                
+                die.addEventListener('click', () => handleDieClick(i));
+                gridEl.appendChild(die);
+                
+                diceList.push({
+                    index: i,
+                    element: die,
+                    eliminated: false,
+                    owner: null,
+                    placement: null 
+                });
+            }
+        }
+
+        document.getElementById('startSetupBtn').addEventListener('click', () => {
+            let pCount = parseInt(document.getElementById('playerCount').value);
+            let pDice = parseInt(document.getElementById('dicePerPlayer').value);
+            let dCount = parseInt(document.getElementById('diceCount').value);
+            let fCount = parseInt(document.getElementById('dieFaces').value);
+
+            if (pCount < 1 || pCount > 10 || isNaN(pCount)) return alert("Players must be 1-10.");
+            if (pDice < 1 || isNaN(pDice)) return alert("Players must pick at least 1 die.");
+            if (dCount < 2 || isNaN(dCount)) return alert("You need at least 2 dice to play.");
+            if (fCount < 2 || isNaN(fCount)) return alert("Dice must have at least 2 faces.");
+            if ((pCount * pDice) > dCount) return alert("Not enough total dice on the board for everyone to pick that many!");
+
+            numPlayers = pCount;
+            dicePerPlayer = pDice;
+            totalDice = dCount;
+            dieFaces = fCount;
+            currentPlace = totalDice; 
+            
+            players = [];
+            for(let i=0; i<numPlayers; i++) {
+                players.push({ id: i+1, color: playerColors[i], dieIndices: [] });
+            }
+
+            createBoard();
+            
+            setupEl.style.display = 'none';
+            statusBoardEl.style.display = 'block';
+            gameState = 'picking';
+            currentPlayerPicking = 1;
+            currentPlayerPicksMade = 0;
+            updateStatusText();
+        });
+
+        function handleDieClick(index) {
+            if (gameState !== 'picking') return;
+
+            const dieData = diceList[index];
+            if (dieData.owner !== null) return;
+
+            dieData.owner = currentPlayerPicking;
+            dieData.element.classList.add('claimed');
+            dieData.element.style.borderColor = players[currentPlayerPicking - 1].color;
+            dieData.element.style.color = players[currentPlayerPicking - 1].color;
+            players[currentPlayerPicking - 1].dieIndices.push(index);
+
+            currentPlayerPicksMade++;
+
+            if (currentPlayerPicksMade >= dicePerPlayer) {
+                currentPlayerPicking++;
+                currentPlayerPicksMade = 0; 
+            }
+
+            if (currentPlayerPicking > numPlayers) {
+                gameState = 'playing';
+                controlsEl.style.display = 'block';
+                statusTextEl.innerText = "Let the Battle Begin!";
+                statusTextEl.style.color = 'white';
+            } else {
+                updateStatusText();
+            }
+        }
+
+        function updateStatusText() {
+            if (gameState === 'picking') {
+                let pickProgress = dicePerPlayer > 1 ? `(Picked ${currentPlayerPicksMade} / ${dicePerPlayer})` : "";
+                statusTextEl.innerText = `Player ${currentPlayerPicking}'s Turn to Pick! ${pickProgress}`;
+                statusTextEl.style.color = players[currentPlayerPicking - 1].color;
+            }
+            
+            const remaining = diceList.filter(d => !d.eliminated).length;
+            remainingTextEl.innerText = `${remaining} / ${totalDice} Dice Remaining`;
+        }
+
+        // --- UPDATED ROLL MECHANICS ---
+        function rollAllDice() {
+            if (gameState !== 'playing') return;
+
+            let remainingDice = diceList.filter(d => !d.eliminated);
+            let justEliminated = [];
+            let onesRolled = []; // Track who rolled a 1
+
+            remainingDice.forEach(dieData => {
+                dieData.element.classList.add('rolling');
+                setTimeout(() => dieData.element.classList.remove('rolling'), 150);
+
+                const roll = Math.floor(Math.random() * dieFaces) + 1;
+                dieData.element.innerText = roll;
+
+                // Mark deaths
+                if (roll === dieFaces) {
+                    dieData.eliminated = true;
+                    justEliminated.push(dieData);
+                    dieData.element.classList.add('crit');
+                    
+                    setTimeout(() => {
+                        dieData.element.classList.remove('crit');
+                        dieData.element.classList.add('eliminated');
+                    }, 800);
+                } 
+                // Track 1s
+                else if (roll === 1) {
+                    onesRolled.push(dieData);
+                }
+            });
+
+            // Assign placement to normal deaths
+            if (justEliminated.length > 0) {
+                let tiedRank = currentPlace - justEliminated.length + 1;
+                justEliminated.forEach(d => d.placement = tiedRank);
+                currentPlace -= justEliminated.length; 
+            }
+
+            // Process Revives and Assassinations
+            onesRolled.forEach(luckyDie => {
+                const ownerId = luckyDie.owner;
+                if (!ownerId) return; // Ignore if a neutral die rolls a 1
+
+                const player = players[ownerId - 1];
+                // Find this player's currently dead dice
+                const deadDice = player.dieIndices
+                    .map(idx => diceList[idx])
+                    .filter(d => d.eliminated);
+
+                if (deadDice.length > 0) {
+                    // --- REVIVE ---
+                    const revivedDie = deadDice[0]; // Pick the first dead one
+                    revivedDie.eliminated = false;
+                    revivedDie.placement = null; // Clear rank so it can die again
+                    currentPlace++; // Increase the active pool rank by 1
+
+                    // Remove from justEliminated array if it somehow died and revived on the exact same tick
+                    const indexInJustEliminated = justEliminated.indexOf(revivedDie);
+                    if (indexInJustEliminated > -1) {
+                        justEliminated.splice(indexInJustEliminated, 1);
+                    }
+
+                    // Visuals
+                    revivedDie.element.classList.remove('eliminated');
+                    revivedDie.element.classList.add('revived');
+                    
+                    // Reset its color to the player's color
+                    revivedDie.element.style.color = player.color;
+                    revivedDie.element.style.borderColor = player.color;
+
+                    setTimeout(() => revivedDie.element.classList.remove('revived'), 1000);
+
+                } else {
+                    // --- ASSASSINATE ---
+                    // Find active dice owned by other players
+                    const potentialTargets = diceList.filter(d => 
+                        !d.eliminated && d.owner !== null && d.owner !== ownerId
+                    );
+
+                    if (potentialTargets.length > 0) {
+                        // Pick a random enemy die
+                        const randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+                        
+                        randomTarget.eliminated = true;
+                        randomTarget.placement = currentPlace; // Takes current rank
+                        currentPlace--; // Drop rank for the next death
+                        justEliminated.push(randomTarget); // Add to death pool for win-checking
+
+                        // Visuals
+                        randomTarget.element.innerText = "X";
+                        randomTarget.element.classList.add('assassinated');
+                        setTimeout(() => {
+                            randomTarget.element.classList.remove('assassinated');
+                            randomTarget.element.classList.add('eliminated');
+                        }, 800);
+                    }
+                }
+            });
+
+            checkWinCondition(justEliminated);
+            updateStatusText();
+        }
+
+        function checkWinCondition(justEliminated) {
+            const activeDice = diceList.filter(d => !d.eliminated);
+            
+            if (activeDice.length === 1) {
+                activeDice[0].placement = 1; 
+                endGame(activeDice[0], false);
+            } else if (activeDice.length === 0) {
+                endGame(justEliminated, true);
+            }
+        }
+
+        function endGame(winners, isDraw) {
+            gameState = 'gameover';
+            if(autoRollInterval) toggleAutoRoll(); 
+            
+            rollBtn.disabled = true;
+            autoRollBtn.disabled = true;
+            playAgainBtn.style.display = 'block';
+            remainingTextEl.innerText = ""; 
+
+            players.forEach(p => {
+                let validPlacements = p.dieIndices.map(idx => diceList[idx].placement).filter(val => val !== null);
+                p.bestRank = validPlacements.length > 0 ? Math.min(...validPlacements) : totalDice;
+            });
+
+            let sortedPlayers = [...players].sort((a, b) => a.bestRank - b.bestRank);
+            let htmlOutput = "";
+
+            if (!isDraw) {
+                const winner = winners; 
+                winner.element.style.backgroundColor = '#FFD700'; 
+                winner.element.style.color = '#000';
+                winner.element.style.borderColor = '#B8860B';
+                htmlOutput += `<span style="color:white;">Game Over! The last die standing is #${winner.index + 1}.</span><br><br>`;
+            } else {
+                htmlOutput += `<span style="color:#FFA500;">Game Over! It's a DRAW!<br>The last ${winners.length} dice all eliminated at the exact same time.</span><br><br>`;
+            }
+
+            if (numPlayers === 1) {
+                let p1Rank = players[0].bestRank;
+                if (p1Rank === 1 && !isDraw) {
+                    htmlOutput += `<span style="color:${players[0].color}">Victory! Your die finished in 1st Place!</span>`;
+                } else if (p1Rank === 1 && isDraw) {
+                    htmlOutput += `<span style="color:${players[0].color}">So close! You tied for 1st Place!</span>`;
+                } else {
+                    htmlOutput += `<span style="color:${players[0].color}">Your best die finished in ${getOrdinal(p1Rank)} place.</span>`;
+                }
+            } else {
+                htmlOutput += `<span style="color:white;"><strong>Final Standings</strong></span><br>`;
+                htmlOutput += `<div class="leaderboard">`;
+                sortedPlayers.forEach(p => {
+                    htmlOutput += `<div style="color:${p.color};">Player ${p.id}: ${getOrdinal(p.bestRank)} Place</div>`;
+                });
+                htmlOutput += `</div>`;
+            }
+
+            statusTextEl.innerHTML = htmlOutput;
+        }
+
+        playAgainBtn.addEventListener('click', () => {
+            statusBoardEl.style.display = 'none';
+            controlsEl.style.display = 'none';
+            playAgainBtn.style.display = 'none';
+            setupEl.style.display = 'block';
+            
+            rollBtn.disabled = false;
+            autoRollBtn.disabled = false;
+            
+            gridEl.innerHTML = '';
+            gameState = 'setup';
+        });
+
+        rollBtn.addEventListener('click', rollAllDice);
+
+        function toggleAutoRoll() {
+            if (autoRollInterval) {
+                clearInterval(autoRollInterval);
+                autoRollInterval = null;
+                autoRollBtn.innerText = "Start Auto-Roll";
+                rollBtn.disabled = false;
+            } else {
+                rollBtn.disabled = true;
+                autoRollBtn.innerText = "Stop Auto-Roll";
+                autoRollInterval = setInterval(rollAllDice, 1200); 
+            }
+        }
+        
+        autoRollBtn.addEventListener('click', toggleAutoRoll);
+
+    </script>
+</body>
+</html>
