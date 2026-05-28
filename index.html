@@ -121,7 +121,7 @@
             transform: scale(0.9);
         }
 
-        /* New Visuals for Mechanics */
+        /* Revived */
         .die.revived {
             background-color: #4CAF50 !important;
             color: white;
@@ -129,11 +129,31 @@
             transform: scale(1.1);
         }
 
+        /* Assassinated */
         .die.assassinated {
             background-color: #9C27B0 !important;
             color: white;
             border-color: #4A148C !important;
             transform: scale(0.8) rotate(-15deg);
+        }
+
+        /* New Visual for Claiming/Converting a Die via Triplet */
+        .die.converted {
+            background-color: #FFEB3B !important;
+            color: black !important;
+            border-color: #FBC02D !important;
+            transform: scale(1.15) rotate(360deg);
+            transition: transform 0.6s ease, background-color 0.3s;
+            z-index: 10;
+        }
+
+        /* New Visual for a Die Deserting its Owner */
+        .die.deserted {
+            background-color: #555 !important;
+            color: #ccc !important;
+            border-color: #777 !important;
+            transform: scale(0.9) translateY(5px);
+            transition: transform 0.4s ease, background-color 0.4s;
         }
 
         #status-text { font-size: 1.2em; font-weight: bold; }
@@ -156,7 +176,7 @@
 <body>
 
     <h1>Dice Survival</h1>
-    <div class="subtitle">Roll the max number and you're out. Roll a 1 to revive or assassinate!</div>
+    <div class="subtitle">Roll the max number and you're out. Claim dice with 3-of-a-kind. Lose dice on repeated low rolls!</div>
 
     <div id="setup">
         <div class="setup-row">
@@ -250,7 +270,8 @@
                     element: die,
                     eliminated: false,
                     owner: null,
-                    placement: null 
+                    placement: null,
+                    lastRoll: null // Memory for repeated roll tracking
                 });
             }
         }
@@ -334,7 +355,11 @@
 
             let remainingDice = diceList.filter(d => !d.eliminated);
             let justEliminated = [];
-            let onesRolled = []; // Track who rolled a 1
+            let onesRolled = []; 
+            
+            // Object to track how many times a player rolled a specific number
+            let playerRollCounts = {};
+            players.forEach(p => playerRollCounts[p.id] = {});
 
             remainingDice.forEach(dieData => {
                 dieData.element.classList.add('rolling');
@@ -342,6 +367,14 @@
 
                 const roll = Math.floor(Math.random() * dieFaces) + 1;
                 dieData.element.innerText = roll;
+
+                // Track rolls for the Triplet mechanic
+                if (dieData.owner !== null) {
+                    if (!playerRollCounts[dieData.owner][roll]) {
+                        playerRollCounts[dieData.owner][roll] = 0;
+                    }
+                    playerRollCounts[dieData.owner][roll]++;
+                }
 
                 // Mark deaths
                 if (roll === dieFaces) {
@@ -354,10 +387,30 @@
                         dieData.element.classList.add('eliminated');
                     }, 800);
                 } 
-                // Track 1s
+                // Track 1s (Revive/Assassinate takes priority over Unclaim on double 1s)
                 else if (roll === 1) {
                     onesRolled.push(dieData);
                 }
+                // Unclaim if roll is < 5 AND matches the last roll exactly
+                else if (dieData.owner !== null && roll < 5 && roll === dieData.lastRoll) {
+                    const oldOwner = players[dieData.owner - 1];
+                    
+                    // Remove from player's inventory
+                    oldOwner.dieIndices = oldOwner.dieIndices.filter(idx => idx !== dieData.index);
+                    
+                    // Reset to neutral state
+                    dieData.owner = null;
+                    dieData.element.classList.remove('claimed');
+                    dieData.element.style.color = ''; 
+                    dieData.element.style.borderColor = ''; 
+                    
+                    // Play desertion animation
+                    dieData.element.classList.add('deserted');
+                    setTimeout(() => dieData.element.classList.remove('deserted'), 800);
+                }
+
+                // IMPORTANT: Save this roll into memory for the NEXT turn
+                dieData.lastRoll = roll;
             });
 
             // Assign placement to normal deaths
@@ -370,32 +423,27 @@
             // Process Revives and Assassinations
             onesRolled.forEach(luckyDie => {
                 const ownerId = luckyDie.owner;
-                if (!ownerId) return; // Ignore if a neutral die rolls a 1
+                if (!ownerId) return; 
 
                 const player = players[ownerId - 1];
-                // Find this player's currently dead dice
                 const deadDice = player.dieIndices
                     .map(idx => diceList[idx])
                     .filter(d => d.eliminated);
 
                 if (deadDice.length > 0) {
                     // --- REVIVE ---
-                    const revivedDie = deadDice[0]; // Pick the first dead one
+                    const revivedDie = deadDice[0]; 
                     revivedDie.eliminated = false;
-                    revivedDie.placement = null; // Clear rank so it can die again
-                    currentPlace++; // Increase the active pool rank by 1
+                    revivedDie.placement = null; 
+                    currentPlace++; 
 
-                    // Remove from justEliminated array if it somehow died and revived on the exact same tick
                     const indexInJustEliminated = justEliminated.indexOf(revivedDie);
                     if (indexInJustEliminated > -1) {
                         justEliminated.splice(indexInJustEliminated, 1);
                     }
 
-                    // Visuals
                     revivedDie.element.classList.remove('eliminated');
                     revivedDie.element.classList.add('revived');
-                    
-                    // Reset its color to the player's color
                     revivedDie.element.style.color = player.color;
                     revivedDie.element.style.borderColor = player.color;
 
@@ -403,27 +451,67 @@
 
                 } else {
                     // --- ASSASSINATE ---
-                    // Find active dice owned by other players
                     const potentialTargets = diceList.filter(d => 
                         !d.eliminated && d.owner !== null && d.owner !== ownerId
                     );
 
                     if (potentialTargets.length > 0) {
-                        // Pick a random enemy die
                         const randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
                         
                         randomTarget.eliminated = true;
-                        randomTarget.placement = currentPlace; // Takes current rank
-                        currentPlace--; // Drop rank for the next death
-                        justEliminated.push(randomTarget); // Add to death pool for win-checking
+                        randomTarget.placement = currentPlace; 
+                        currentPlace--; 
+                        justEliminated.push(randomTarget); 
 
-                        // Visuals
                         randomTarget.element.innerText = "X";
                         randomTarget.element.classList.add('assassinated');
                         setTimeout(() => {
                             randomTarget.element.classList.remove('assassinated');
                             randomTarget.element.classList.add('eliminated');
                         }, 800);
+                    }
+                }
+            });
+
+            // --- Process Triplets (Claiming Dice) ---
+            Object.keys(playerRollCounts).forEach(ownerIdStr => {
+                const ownerId = parseInt(ownerIdStr);
+                const counts = playerRollCounts[ownerId];
+                let claimsToMake = 0;
+
+                // Check if they got 3 of a kind
+                for (let rollVal in counts) {
+                    if (counts[rollVal] >= 3) {
+                        claimsToMake += Math.floor(counts[rollVal] / 3);
+                    }
+                }
+
+                for (let i = 0; i < claimsToMake; i++) {
+                    // Find active dice NOT owned by this player
+                    const potentialTargets = diceList.filter(d => !d.eliminated && d.owner !== ownerId);
+                    
+                    if (potentialTargets.length > 0) {
+                        const randomTarget = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+                        const newOwner = players[ownerId - 1];
+
+                        // If an enemy owned it, remove it from their tracking array
+                        if (randomTarget.owner !== null) {
+                            const oldOwner = players[randomTarget.owner - 1];
+                            oldOwner.dieIndices = oldOwner.dieIndices.filter(idx => idx !== randomTarget.index);
+                        }
+
+                        // Assign to new owner
+                        randomTarget.owner = ownerId;
+                        newOwner.dieIndices.push(randomTarget.index);
+
+                        // Visual updates
+                        randomTarget.element.classList.add('claimed');
+                        randomTarget.element.style.borderColor = newOwner.color;
+                        randomTarget.element.style.color = newOwner.color;
+                        
+                        // Fire the conversion animation
+                        randomTarget.element.classList.add('converted');
+                        setTimeout(() => randomTarget.element.classList.remove('converted'), 800);
                     }
                 }
             });
